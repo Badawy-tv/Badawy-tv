@@ -1,0 +1,12 @@
+git+https://github.com/huggingface/transformers.git
+sentencepiece
+accelerate
+fastapi
+uvicorn[standard]
+python-multipart
+requests
+numpy
+pandas
+beautifulsoup4
+lxml
+newspaper3k

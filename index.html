@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Badawy-tv AI Chat</title>
+<style>
+body { font-family: Arial, sans-serif; background: #f0f4f8; margin: 0; padding: 0; display: flex; justify-content: center; }
+.container { max-width: 700px; width: 100%; padding: 20px; }
+h1 { text-align: center; color: #333; }
+.tabs { display: flex; justify-content: space-around; margin-bottom: 10px; }
+.tab { padding: 10px 20px; cursor: pointer; background: #ddd; border-radius: 6px; }
+.tab.active { background: #4CAF50; color: white; }
+#chat { height: 400px; overflow-y: auto; background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #ccc; }
+.message { margin: 8px 0; }
+.user { color: #333; }
+.ai { color: #1a73e8; }
+input, textarea { width: 100%; padding: 10px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; }
+button { padding: 10px 20px; margin-top: 10px; font-size: 16px; border-radius: 6px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+button:disabled { background: #999; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Badawy-tv AI</h1>
+
+<div class="tabs">
+  <div class="tab active" data-task="generate">Chat / Generate</div>
+  <div class="tab" data-task="summarize">Summarize</div>
+  <div class="tab" data-task="qa">Q&A</div>
+</div>
+
+<div id="chat"></div>
+
+<textarea id="context" placeholder="Enter context for Q&A..." style="display:none;"></textarea>
+<input type="text" id="prompt" placeholder="Type your message here...">
+<button onclick="sendMessage()">Send</button>
+
+<script>
+let activeTask = 'generate';
+const chat = document.getElementById('chat');
+const promptInput = document.getElementById('prompt');
+const contextInput = document.getElementById('context');
+const tabs = document.querySelectorAll('.tab');
+
+// Switch task
+tabs.forEach(tab => tab.addEventListener('click', ()=>{
+    tabs.forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    activeTask = tab.dataset.task;
+    contextInput.style.display = activeTask === 'qa' ? 'block' : 'none';
+}));
+
+// Add message to chat
+function addMessage(text, sender){
+    const div = document.createElement('div');
+    div.className = 'message ' + sender;
+    div.innerText = (sender==='user'?'You: ':'AI: ') + text;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+// Send message to backend
+async function sendMessage(){
+    let prompt = promptInput.value.trim();
+    let context = contextInput.value.trim();
+    if(!prompt) return;
+    addMessage(prompt, 'user');
+    promptInput.value = '';
+    
+    addMessage('...', 'ai'); // loading
+    const aiMsg = chat.querySelector('.message.ai:last-child');
+
+    let endpoint = '';
+    let body = {};
+    if(activeTask==='generate'){
+        endpoint = '/generate';
+        body = {prompt};
+    } else if(activeTask==='summarize'){
+        endpoint = '/summarize';
+        body = {text: prompt};
+    } else if(activeTask==='qa'){
+        endpoint = '/qa';
+        body = {question: prompt, context};
+    }
+
+    try{
+        const res = await fetch('http://YOUR_SERVER_IP:8000'+endpoint, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        let text = activeTask==='generate'?data.response: activeTask==='summarize'?data.summary: data.answer;
+        aiMsg.innerText = 'AI: ' + text;
+    } catch(e){
+        aiMsg.innerText = 'AI: Error connecting to backend';
+    }
+}
+</script>
+</div>
+</body>
+</html>
