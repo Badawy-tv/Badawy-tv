@@ -1,28 +1,49 @@
 from fastapi import FastAPI
-from transformers import pipeline
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
+import os
 
 app = FastAPI()
 
-# CPU-friendly models (replace with bigger models if server allows)
-generator = pipeline("text-generation", model="distilgpt2")
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
-qa = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
+# Load embeddings model
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Prepare knowledge base
+knowledge_dir = "knowledge"
+documents = []
+doc_texts = []
+
+for filename in os.listdir(knowledge_dir):
+    if filename.endswith(".txt"):
+        path = os.path.join(knowledge_dir, filename)
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+            doc_texts.append(text)
+            documents.append(text)
+
+if documents:
+    embeddings = model.encode(documents, convert_to_numpy=True)
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dim)
+    index.add(embeddings)
+else:
+    index = None
 
 @app.get("/")
 def root():
     return {"message": "Badawy-tv AI backend running"}
 
-@app.post("/generate")
-def generate_text(prompt: str):
-    result = generator(prompt, max_length=150)
-    return {"response": result[0]['generated_text']}
+@app.post("/query")
+def query_ai(question: str):
+    if not documents:
+        return {"answer": "No knowledge available yet."}
+    q_embedding = model.encode([question], convert_to_numpy=True)
+    D, I = index.search(q_embedding, k=1)
+    answer = doc_texts[I[0][0]]
+    return {"answer": answer}
 
-@app.post("/summarize")
-def summarize_text(text: str):
-    result = summarizer(text, max_length=100, min_length=30)
-    return {"summary": result[0]['summary_text']}
-
-@app.post("/qa")
-def answer_question(question: str, context: str):
-    result = qa(question=question, context=context)
-    return {"answer": result['answer']}
+@app.post("/task")
+def run_task(task_type: str, input_text: str):
+    # Placeholder for future tasks: summarization, QA, generation
+    return {"task": task_type, "response": f"Task executed on: {input_text}"}

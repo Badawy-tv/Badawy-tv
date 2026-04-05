@@ -1,12 +1,144 @@
-git+https://github.com/huggingface/transformers.git
-sentencepiece
-accelerate
 fastapi
 uvicorn[standard]
-python-multipart
-requests
+transformers
+sentence-transformers
 numpy
 pandas
+faiss-cpu
+python-multipart
 beautifulsoup4
 lxml
 newspaper3k
+EOF && \
+
+# 3️⃣ Create backend API
+cat > api.py << 'EOF'
+from fastapi import FastAPI, Form
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from sentence_transformers import SentenceTransformer
+import faiss, numpy as np, os
+
+app = FastAPI()
+
+# Serve static frontend
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+def homepage():
+    return FileResponse("templates/index.html")
+
+# Load embeddings model
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Load knowledge base
+knowledge_dir = "knowledge"
+documents = []
+doc_texts = []
+
+for filename in os.listdir(knowledge_dir):
+    if filename.endswith(".txt"):
+        path = os.path.join(knowledge_dir, filename)
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+            doc_texts.append(text)
+            documents.append(text)
+
+if documents:
+    embeddings = model.encode(documents, convert_to_numpy=True)
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dim)
+    index.add(embeddings)
+else:
+    index = None
+
+@app.post("/query")
+def query_ai(question: str = Form(...)):
+    if not documents:
+        return {"answer": "No knowledge available yet."}
+    q_embedding = model.encode([question], convert_to_numpy=True)
+    D, I = index.search(q_embedding, k=1)
+    answer = doc_texts[I[0][0]]
+    return {"answer": answer}
+
+@app.post("/task")
+def run_task(task_type: str = Form(...), input_text: str = Form(...)):
+    return {"task": task_type, "response": f"Task executed on: {input_text}"}
+EOF && \
+
+# 4️⃣ Create professional frontend HTML
+cat > templates/index.html << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Badawy-TV AI</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<header>
+  <h1>Badawy-TV AI</h1>
+  <p>Intelligent assistant capable of answering questions and performing tasks.</p>
+</header>
+<div class="container">
+  <textarea id="question" placeholder="Type your question here..."></textarea>
+  <button onclick="askAI()">Ask AI</button>
+  <div id="response"></div>
+  <hr>
+  <h2>Advanced Tasks</h2>
+  <textarea id="task_input" placeholder="Input for task..."></textarea>
+  <select id="task_type">
+    <option value="summarization">Summarization</option>
+    <option value="translation">Translation</option>
+    <option value="qa">Question Answering</option>
+  </select>
+  <button onclick="runTask()">Run Task</button>
+  <div id="task_response"></div>
+</div>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
+EOF && \
+
+# 5️⃣ Create structured CSS
+cat > static/css/style.css << 'EOF'
+body {font-family: 'Roboto', sans-serif; background: #f4f6f8; margin: 0;}
+header {background: #1e3a8a; color: #fff; padding: 20px; text-align: center;}
+.container {max-width: 900px; margin: 30px auto; background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);}
+textarea {width: 100%; height: 120px; padding: 12px; font-size: 16px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #ccc;}
+button {background: #1e3a8a; color: #fff; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;}
+button:hover {background: #15306a;}
+#response, #task_response {margin-top: 15px; padding: 15px; background: #eef2f7; border-radius: 8px; white-space: pre-wrap;}
+hr {margin: 30px 0;}
+select {padding: 8px; margin-right: 10px; border-radius: 6px; border: 1px solid #ccc;}
+EOF && \
+
+# 6️⃣ Create frontend JS
+cat > static/js/app.js << 'EOF'
+async function askAI() {
+    const question = document.getElementById('question').value;
+    const responseDiv = document.getElementById('response');
+    responseDiv.textContent = "Thinking...";
+    const res = await fetch('/query', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({ question })
+    });
+    const data = await res.json();
+    responseDiv.textContent = data.answer || "No response available.";
+}
+
+async function runTask() {
+    const input_text = document.getElementById('task_input').value;
+    const task_type = document.getElementById('task_type').value;
+    const taskDiv = document.getElementById('task_response');
+    taskDiv.textContent = "Running task...";
+    const res = await fetch('/task', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({ task_type, input_text })
+    });
+    const data = await res.json();
+    taskDiv.textContent = data.response;
+}
